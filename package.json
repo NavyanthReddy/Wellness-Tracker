@@ -1,6 +1,7 @@
 {
   "name": "wellness-tracker",
   "version": "1.0.0",
+  "homepage": "https://navyanthreddy.github.io/wellness-tracker/",
   "description": "A comprehensive wellness tracking app for meals, workouts, skincare, and daily tasks",
   "private": true,
   "dependencies": {
