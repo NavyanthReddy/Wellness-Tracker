@@ -4,6 +4,7 @@ import Dashboard from './components/Dashboard';
 import Login from './components/Login';
 import { initializeData } from './utils/storage';
 import ErrorBoundary from './components/ErrorBoundary';
+import DebugInfo from './components/DebugInfo';
 import './index.css';
 
 function AppContent() {
@@ -63,6 +64,7 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <DebugInfo />
       <Dashboard 
         selectedDate={selectedDate}
         onDateChange={setSelectedDate}
