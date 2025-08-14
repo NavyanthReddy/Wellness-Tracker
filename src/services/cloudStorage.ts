@@ -3,11 +3,7 @@ import {
   setDoc, 
   getDoc, 
   collection, 
-  query, 
-  where, 
   getDocs,
-  updateDoc,
-  deleteDoc,
   onSnapshot
 } from 'firebase/firestore';
 import { db } from '../firebase/config';

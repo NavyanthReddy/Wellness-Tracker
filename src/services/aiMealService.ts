@@ -107,28 +107,6 @@ class AIMealService {
 
   // Fallback method using common food database with per-100g nutrition
   async calculateMealNutritionFallback(mealDescription: string, weight?: number): Promise<NutritionInfo | null> {
-    const commonFoods: Record<string, NutritionInfo> = {
-      'chicken breast': { calories: 165, fats: 3.6, carbs: 0, protein: 31 },
-      'salmon': { calories: 208, fats: 12, carbs: 0, protein: 25 },
-      'rice': { calories: 130, fats: 0.3, carbs: 28, protein: 2.7 },
-      'broccoli': { calories: 34, fats: 0.4, carbs: 7, protein: 2.8 },
-      'banana': { calories: 89, fats: 0.3, carbs: 23, protein: 1.1 },
-      'apple': { calories: 52, fats: 0.2, carbs: 14, protein: 0.3 },
-      'oatmeal': { calories: 68, fats: 1.4, carbs: 12, protein: 2.4 },
-      'eggs': { calories: 155, fats: 11, carbs: 1.1, protein: 13 },
-      'milk': { calories: 42, fats: 1, carbs: 5, protein: 3.4 },
-      'bread': { calories: 79, fats: 1, carbs: 15, protein: 3.1 },
-      'pasta': { calories: 131, fats: 1.1, carbs: 25, protein: 5 },
-      'beef': { calories: 250, fats: 15, carbs: 0, protein: 26 },
-      'fish': { calories: 206, fats: 12, carbs: 0, protein: 22 },
-      'vegetables': { calories: 25, fats: 0.2, carbs: 5, protein: 2 },
-      'fruits': { calories: 60, fats: 0.2, carbs: 15, protein: 0.5 },
-      'salad': { calories: 20, fats: 0.2, carbs: 4, protein: 1.5 },
-      'soup': { calories: 100, fats: 3, carbs: 15, protein: 5 },
-      'sandwich': { calories: 300, fats: 12, carbs: 35, protein: 15 },
-      'pizza': { calories: 266, fats: 10, carbs: 33, protein: 11 },
-      'burger': { calories: 354, fats: 17, carbs: 30, protein: 16 },
-    };
 
     // Per 100g nutrition values for more accurate calculations
     const per100gFoods: Record<string, NutritionInfo> = {
