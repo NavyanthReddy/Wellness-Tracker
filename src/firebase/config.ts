@@ -14,6 +14,13 @@ const firebaseConfig = {
   measurementId: "G-865SBHTV8G"
 };
 
+// Add console log for debugging
+console.log('🔥 Firebase Config:', {
+  authDomain: firebaseConfig.authDomain,
+  projectId: firebaseConfig.projectId,
+  currentDomain: window.location.hostname
+});
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 

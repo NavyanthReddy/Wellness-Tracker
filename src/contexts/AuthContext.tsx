@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { 
   User, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
+  // signInWithEmailAndPassword, 
+  // createUserWithEmailAndPassword, 
   signOut, 
   onAuthStateChanged,
   GoogleAuthProvider,
@@ -13,8 +13,8 @@ import { auth } from '../firebase/config';
 
 interface AuthContextType {
   currentUser: User | null;
-  login: (email: string, password: string) => Promise<UserCredential>;
-  signup: (email: string, password: string) => Promise<UserCredential>;
+  // login: (email: string, password: string) => Promise<UserCredential>;
+  // signup: (email: string, password: string) => Promise<UserCredential>;
   logout: () => Promise<void>;
   signInWithGoogle: () => Promise<UserCredential>;
   loading: boolean;
@@ -34,13 +34,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  function signup(email: string, password: string) {
-    return createUserWithEmailAndPassword(auth, email, password);
-  }
+  // function signup(email: string, password: string) {
+  //   return createUserWithEmailAndPassword(auth, email, password);
+  // }
 
-  function login(email: string, password: string) {
-    return signInWithEmailAndPassword(auth, email, password);
-  }
+  // function login(email: string, password: string) {
+  //   return signInWithEmailAndPassword(auth, email, password);
+  // }
 
   function logout() {
     return signOut(auth);
@@ -68,8 +68,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const value = {
     currentUser,
-    login,
-    signup,
+    // login,
+    // signup,
     logout,
     signInWithGoogle,
     loading
