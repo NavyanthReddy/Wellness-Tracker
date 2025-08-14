@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Dashboard from './components/Dashboard';
 import Login from './components/Login';
 import { initializeData } from './utils/storage';
+import ErrorBoundary from './components/ErrorBoundary';
 import './index.css';
 
 function AppContent() {
@@ -41,7 +42,10 @@ function AppContent() {
     initializeData();
   }, []);
 
+  console.log('AppContent: loading =', loading, 'currentUser =', currentUser);
+
   if (loading) {
+    console.log('AppContent: Showing loading screen');
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -53,6 +57,7 @@ function AppContent() {
   }
 
   if (!currentUser) {
+    console.log('AppContent: No user, showing Login');
     return <Login />;
   }
 
@@ -68,9 +73,11 @@ function AppContent() {
 
 function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

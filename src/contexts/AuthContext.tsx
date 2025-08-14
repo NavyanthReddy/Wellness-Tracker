@@ -52,8 +52,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
+    console.log('AuthContext: Setting up auth state listener...');
+    
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log('AuthContext: Auth state changed:', user ? 'User logged in' : 'No user');
       setCurrentUser(user);
+      setLoading(false);
+    }, (error) => {
+      console.error('AuthContext: Auth state error:', error);
       setLoading(false);
     });
 
@@ -71,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 }
