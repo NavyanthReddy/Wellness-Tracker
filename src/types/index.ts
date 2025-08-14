@@ -3,37 +3,37 @@ export interface Meal {
   type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
   name: string;
   description?: string;
-  calories?: number;
+  calories: number;
+  fats: number;
+  carbs: number;
+  protein: number;
   time: string;
-  date: string;
 }
 
 export interface Workout {
   id: string;
-  type: string;
-  duration: number; // in minutes
-  intensity: 'low' | 'medium' | 'high';
-  description?: string;
+  completed: boolean;
+  workoutType: string;
+  weights?: number;
+  reps?: number;
+  intensity?: 'low' | 'medium' | 'high';
   time: string;
-  date: string;
 }
 
 export interface SkincareStep {
   id: string;
   name: string;
-  category: 'cleanser' | 'toner' | 'serum' | 'moisturizer' | 'sunscreen' | 'mask' | 'other';
-  time: 'morning' | 'evening' | 'both';
+  category: 'cleanser' | 'toner' | 'serum' | 'moisturizer' | 'sunscreen' | 'mask' | 'exfoliator' | 'custom';
   completed: boolean;
-  date: string;
+  order: number;
 }
 
 export interface Task {
   id: string;
   title: string;
   description?: string;
-  completed: boolean;
   priority: 'low' | 'medium' | 'high';
-  date: string;
+  completed: boolean;
 }
 
 export interface DailyData {
@@ -45,9 +45,17 @@ export interface DailyData {
 }
 
 export interface WellnessStats {
-  totalMeals: number;
-  totalWorkouts: number;
-  skincareCompleted: number;
+  totalCalories: number;
+  totalFats: number;
+  totalCarbs: number;
+  totalProtein: number;
+  workoutsCompleted: number;
+  skincareStepsCompleted: number;
   tasksCompleted: number;
-  streak: number;
+  totalTasks: number;
+}
+
+export interface SkincareRoutine {
+  morning: SkincareStep[];
+  evening: SkincareStep[];
 }

@@ -1,59 +1,187 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, Circle, Sparkles, Sun, Moon } from 'lucide-react';
-import { SkincareStep } from '../types';
-import { getDailyData, updateSkincare } from '../utils/storage';
+import { SkincareStep, SkincareRoutine } from '../types';
+import { cloudStorage } from '../services/cloudStorage';
+import { useAuth } from '../contexts/AuthContext';
+import { format } from 'date-fns';
+import { Trash2, Edit, Sparkles, Settings } from 'lucide-react';
 
 interface SkincareTrackerProps {
-  date: string;
-  onUpdate: () => void;
+  selectedDate: string;
 }
 
-const SkincareTracker: React.FC<SkincareTrackerProps> = ({ date, onUpdate }) => {
-  const [skincareSteps, setSkincareSteps] = useState<SkincareStep[]>([]);
+const SkincareTracker: React.FC<SkincareTrackerProps> = ({ selectedDate }) => {
+  const [skincare, setSkincare] = useState<SkincareStep[]>([]);
+  const [routine, setRoutine] = useState<SkincareRoutine>({ morning: [], evening: [] });
+  const [showRoutineEditor, setShowRoutineEditor] = useState(false);
+  const [editingStep, setEditingStep] = useState<SkincareStep | null>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    category: 'cleanser' as SkincareStep['category'],
+    time: 'morning' as 'morning' | 'evening',
+  });
+  const { currentUser } = useAuth();
 
   useEffect(() => {
-    const dailyData = getDailyData(date);
-    if (dailyData.skincare.length === 0) {
-      // Initialize with default skincare routine
-      const defaultSteps: SkincareStep[] = [
-        { id: '1', name: 'Gentle Cleanser', category: 'cleanser', time: 'both', completed: false, date },
-        { id: '2', name: 'Toner', category: 'toner', time: 'both', completed: false, date },
-        { id: '3', name: 'Vitamin C Serum', category: 'serum', time: 'morning', completed: false, date },
-        { id: '4', name: 'Moisturizer', category: 'moisturizer', time: 'both', completed: false, date },
-        { id: '5', name: 'Sunscreen (SPF 30+)', category: 'sunscreen', time: 'morning', completed: false, date },
-        { id: '6', name: 'Retinol Serum', category: 'serum', time: 'evening', completed: false, date },
-        { id: '7', name: 'Eye Cream', category: 'other', time: 'both', completed: false, date },
-      ];
-      setSkincareSteps(defaultSteps);
-      updateSkincare(date, defaultSteps);
-    } else {
-      setSkincareSteps(dailyData.skincare);
-    }
-  }, [date]);
+    const loadSkincareData = async () => {
+      if (!currentUser) return;
+      
+      try {
+        const dailyData = await cloudStorage.getDailyData(currentUser.uid, selectedDate);
+        const currentRoutine = await cloudStorage.getSkincareRoutine(currentUser.uid);
+        setRoutine(currentRoutine);
+        
+        // If no skincare data for today, initialize with current routine
+        if (dailyData.skincare.length === 0) {
+          const allSteps = [...currentRoutine.morning, ...currentRoutine.evening];
+          if (allSteps.length > 0) {
+            const initialSkincare = allSteps.map(step => ({
+              ...step,
+              completed: false,
+            }));
+            setSkincare(initialSkincare);
+            await cloudStorage.updateSkincare(currentUser.uid, selectedDate, initialSkincare);
+          } else {
+            setSkincare([]);
+          }
+        } else {
+          setSkincare(dailyData.skincare);
+        }
+      } catch (error) {
+        console.error('Error loading skincare data:', error);
+      }
+    };
 
-  const handleToggleStep = (stepId: string) => {
-    const updatedSteps = skincareSteps.map(step =>
+    loadSkincareData();
+  }, [selectedDate, currentUser]);
+
+  const handleToggleStep = async (stepId: string) => {
+    if (!currentUser) return;
+    
+    const updatedSkincare = skincare.map(step =>
       step.id === stepId ? { ...step, completed: !step.completed } : step
     );
-    setSkincareSteps(updatedSteps);
-    updateSkincare(date, updatedSteps);
-    onUpdate();
+    setSkincare(updatedSkincare);
+    
+    try {
+      await cloudStorage.updateSkincare(currentUser.uid, selectedDate, updatedSkincare);
+    } catch (error) {
+      console.error('Error updating skincare:', error);
+    }
   };
 
-  const addCustomStep = () => {
+  const handleAddStep = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name.trim() || !currentUser) return;
+
     const newStep: SkincareStep = {
       id: Date.now().toString(),
-      name: 'Custom Step',
-      category: 'other',
-      time: 'both',
+      name: formData.name.trim(),
+      category: formData.category,
       completed: false,
-      date,
+      order: routine[formData.time].length + 1,
     };
-    const updatedSteps = [...skincareSteps, newStep];
-    setSkincareSteps(updatedSteps);
-    updateSkincare(date, updatedSteps);
-    onUpdate();
+
+    const updatedRoutine = {
+      ...routine,
+      [formData.time]: [...routine[formData.time], newStep],
+    };
+
+    setRoutine(updatedRoutine);
+    
+    try {
+      await cloudStorage.saveSkincareRoutine(currentUser.uid, updatedRoutine);
+      
+      // Update daily skincare if we're on today's date
+      const today = format(new Date(), 'yyyy-MM-dd');
+      if (selectedDate === today) {
+        const updatedSkincare = [...skincare, { ...newStep, completed: false }];
+        setSkincare(updatedSkincare);
+        await cloudStorage.updateSkincare(currentUser.uid, selectedDate, updatedSkincare);
+      }
+      
+      setFormData({ name: '', category: 'cleanser', time: 'morning' });
+    } catch (error) {
+      console.error('Error adding skincare step:', error);
+    }
   };
+
+  const handleDeleteStep = async (stepId: string, time: 'morning' | 'evening') => {
+    if (!currentUser) return;
+    
+    const updatedRoutine = {
+      ...routine,
+      [time]: routine[time].filter(step => step.id !== stepId),
+    };
+    setRoutine(updatedRoutine);
+    
+    try {
+      await cloudStorage.saveSkincareRoutine(currentUser.uid, updatedRoutine);
+      
+      // Update daily skincare if we're on today's date
+      const today = format(new Date(), 'yyyy-MM-dd');
+      if (selectedDate === today) {
+        const updatedSkincare = skincare.filter(step => step.id !== stepId);
+        setSkincare(updatedSkincare);
+        await cloudStorage.updateSkincare(currentUser.uid, selectedDate, updatedSkincare);
+      }
+    } catch (error) {
+      console.error('Error deleting skincare step:', error);
+    }
+  };
+
+  const handleEditStep = (step: SkincareStep) => {
+    setEditingStep(step);
+    setFormData({
+      name: step.name,
+      category: step.category,
+      time: routine.morning.find(s => s.id === step.id) ? 'morning' : 'evening',
+    });
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStep || !formData.name.trim() || !currentUser) return;
+
+    const updatedRoutine = {
+      morning: routine.morning.map(step =>
+        step.id === editingStep.id
+          ? { ...step, name: formData.name.trim(), category: formData.category }
+          : step
+      ),
+      evening: routine.evening.map(step =>
+        step.id === editingStep.id
+          ? { ...step, name: formData.name.trim(), category: formData.category }
+          : step
+      ),
+    };
+
+    setRoutine(updatedRoutine);
+    
+    try {
+      await cloudStorage.saveSkincareRoutine(currentUser.uid, updatedRoutine);
+      
+      // Update daily skincare if we're on today's date
+      const today = format(new Date(), 'yyyy-MM-dd');
+      if (selectedDate === today) {
+        const updatedSkincare = skincare.map(step =>
+          step.id === editingStep.id
+            ? { ...step, name: formData.name.trim(), category: formData.category }
+            : step
+        );
+        setSkincare(updatedSkincare);
+        await cloudStorage.updateSkincare(currentUser.uid, selectedDate, updatedSkincare);
+      }
+      
+      setEditingStep(null);
+      setFormData({ name: '', category: 'cleanser', time: 'morning' });
+    } catch (error) {
+      console.error('Error saving skincare step edit:', error);
+    }
+  };
+
+  const completedSteps = skincare.filter(step => step.completed).length;
+  const totalSteps = skincare.length;
+  const progressPercentage = totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
 
   const getCategoryIcon = (category: SkincareStep['category']) => {
     switch (category) {
@@ -63,161 +191,294 @@ const SkincareTracker: React.FC<SkincareTrackerProps> = ({ date, onUpdate }) => 
       case 'moisturizer': return '🧴';
       case 'sunscreen': return '☀️';
       case 'mask': return '🎭';
-      case 'other': return '✨';
-      default: return '✨';
+      case 'exfoliator': return '✨';
+      default: return '💫';
     }
   };
-
-  const getTimeIcon = (time: SkincareStep['time']) => {
-    switch (time) {
-      case 'morning': return <Sun className="w-4 h-4 text-yellow-500" />;
-      case 'evening': return <Moon className="w-4 h-4 text-blue-500" />;
-      case 'both': return <div className="flex space-x-1"><Sun className="w-3 h-3 text-yellow-500" /><Moon className="w-3 h-3 text-blue-500" /></div>;
-      default: return <Sparkles className="w-4 h-4 text-purple-500" />;
-    }
-  };
-
-  const morningSteps = skincareSteps.filter(step => step.time === 'morning' || step.time === 'both');
-  const eveningSteps = skincareSteps.filter(step => step.time === 'evening' || step.time === 'both');
-  const completedSteps = skincareSteps.filter(step => step.completed).length;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Skincare Routine</h2>
-          <p className="text-gray-600">Track your daily skincare steps</p>
+        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+          <Sparkles className="w-6 h-6 text-purple-500" />
+          Skincare Tracker
+        </h2>
+        <button
+          onClick={() => setShowRoutineEditor(!showRoutineEditor)}
+          className="btn-secondary flex items-center gap-2"
+        >
+          <Settings className="w-4 h-4" />
+          Customize Routine
+        </button>
+      </div>
+
+      {/* Progress Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="wellness-card bg-purple-50 border-purple-200">
+          <div className="text-sm text-purple-600 font-medium">Total Steps</div>
+          <div className="text-2xl font-bold text-purple-700">{totalSteps}</div>
         </div>
-        <div className="flex items-center space-x-4">
-          <div className="text-right">
-            <p className="text-sm text-gray-600">Completed Today</p>
-            <p className="text-2xl font-bold text-wellness-skincare">
-              {completedSteps} / {skincareSteps.length}
-            </p>
-          </div>
-          <button
-            onClick={addCustomStep}
-            className="btn-primary flex items-center space-x-2"
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>Add Step</span>
-          </button>
+        <div className="wellness-card bg-green-50 border-green-200">
+          <div className="text-sm text-green-600 font-medium">Completed</div>
+          <div className="text-2xl font-bold text-green-700">{completedSteps}</div>
+        </div>
+        <div className="wellness-card bg-blue-50 border-blue-200">
+          <div className="text-sm text-blue-600 font-medium">Progress</div>
+          <div className="text-2xl font-bold text-blue-700">{Math.round(progressPercentage)}%</div>
         </div>
       </div>
 
       {/* Progress Bar */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-gray-700">Daily Progress</span>
-          <span className="text-sm text-gray-500">{Math.round((completedSteps / skincareSteps.length) * 100)}%</span>
-        </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
-          <div
-            className="bg-gradient-to-r from-wellness-skincare to-purple-400 h-2 rounded-full transition-all duration-300"
-            style={{ width: `${(completedSteps / skincareSteps.length) * 100}%` }}
-          ></div>
-        </div>
-      </div>
-
-      {/* Morning Routine */}
-      <div className="card">
-        <div className="flex items-center space-x-2 mb-4">
-          <Sun className="w-5 h-5 text-yellow-500" />
-          <h3 className="text-lg font-semibold text-gray-900">Morning Routine</h3>
-        </div>
-        <div className="space-y-3">
-          {morningSteps.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">No morning steps configured</p>
-          ) : (
-            morningSteps.map((step) => (
-              <div
-                key={step.id}
-                className={`flex items-center space-x-3 p-3 rounded-lg transition-colors ${
-                  step.completed ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'
-                }`}
-              >
-                <button
-                  onClick={() => handleToggleStep(step.id)}
-                  className="flex-shrink-0"
-                >
-                  {step.completed ? (
-                    <CheckCircle className="w-5 h-5 text-green-600" />
-                  ) : (
-                    <Circle className="w-5 h-5 text-gray-400 hover:text-gray-600" />
-                  )}
-                </button>
-                <div className="flex items-center space-x-2">
-                  <span className="text-lg">{getCategoryIcon(step.category)}</span>
-                  <span className={`font-medium ${step.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
-                    {step.name}
-                  </span>
-                </div>
-                <div className="ml-auto">
-                  {getTimeIcon(step.time)}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Evening Routine */}
-      <div className="card">
-        <div className="flex items-center space-x-2 mb-4">
-          <Moon className="w-5 h-5 text-blue-500" />
-          <h3 className="text-lg font-semibold text-gray-900">Evening Routine</h3>
-        </div>
-        <div className="space-y-3">
-          {eveningSteps.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">No evening steps configured</p>
-          ) : (
-            eveningSteps.map((step) => (
-              <div
-                key={step.id}
-                className={`flex items-center space-x-3 p-3 rounded-lg transition-colors ${
-                  step.completed ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'
-                }`}
-              >
-                <button
-                  onClick={() => handleToggleStep(step.id)}
-                  className="flex-shrink-0"
-                >
-                  {step.completed ? (
-                    <CheckCircle className="w-5 h-5 text-green-600" />
-                  ) : (
-                    <Circle className="w-5 h-5 text-gray-400 hover:text-gray-600" />
-                  )}
-                </button>
-                <div className="flex items-center space-x-2">
-                  <span className="text-lg">{getCategoryIcon(step.category)}</span>
-                  <span className={`font-medium ${step.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
-                    {step.name}
-                  </span>
-                </div>
-                <div className="ml-auto">
-                  {getTimeIcon(step.time)}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Tips */}
-      <div className="card bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
-        <div className="flex items-start space-x-3">
-          <Sparkles className="w-5 h-5 text-purple-600 mt-0.5" />
-          <div>
-            <h4 className="font-semibold text-purple-900 mb-1">Skincare Tips</h4>
-            <ul className="text-sm text-purple-800 space-y-1">
-              <li>• Always apply sunscreen in the morning, even on cloudy days</li>
-              <li>• Use gentle, fragrance-free products if you have sensitive skin</li>
-              <li>• Don't forget to moisturize after cleansing</li>
-              <li>• Be consistent with your routine for best results</li>
-            </ul>
+      {totalSteps > 0 && (
+        <div className="card">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-700">Daily Progress</span>
+            <span className="text-sm text-gray-500">{completedSteps}/{totalSteps} steps</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-3">
+            <div
+              className="bg-gradient-to-r from-purple-500 to-pink-500 h-3 rounded-full transition-all duration-300"
+              style={{ width: `${progressPercentage}%` }}
+            />
           </div>
         </div>
+      )}
+
+      {/* Routine Editor */}
+      {showRoutineEditor && (
+        <div className="card">
+          <h3 className="text-lg font-semibold mb-4">Customize Your Skincare Routine</h3>
+          
+          {/* Add New Step */}
+          <form onSubmit={editingStep ? handleSaveEdit : handleAddStep} className="mb-6 p-4 bg-gray-50 rounded-lg">
+            <h4 className="font-medium mb-3">
+              {editingStep ? 'Edit Step' : 'Add New Step'}
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Step Name *
+                </label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="e.g., Vitamin C Serum"
+                  className="input-field"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Category
+                </label>
+                <select
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
+                  className="input-field"
+                >
+                  <option value="cleanser">Cleanser</option>
+                  <option value="toner">Toner</option>
+                  <option value="serum">Serum</option>
+                  <option value="moisturizer">Moisturizer</option>
+                  <option value="sunscreen">Sunscreen</option>
+                  <option value="mask">Mask</option>
+                  <option value="exfoliator">Exfoliator</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Time
+                </label>
+                <select
+                  value={formData.time}
+                  onChange={(e) => setFormData({ ...formData, time: e.target.value as any })}
+                  className="input-field"
+                >
+                  <option value="morning">Morning</option>
+                  <option value="evening">Evening</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button type="submit" className="btn-primary">
+                {editingStep ? 'Save Changes' : 'Add Step'}
+              </button>
+              {editingStep && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingStep(null);
+                    setFormData({ name: '', category: 'cleanser', time: 'morning' });
+                  }}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </form>
+
+          {/* Morning Routine */}
+          <div className="mb-6">
+            <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+              🌅 Morning Routine
+            </h4>
+            <div className="space-y-2">
+              {routine.morning.length === 0 ? (
+                <p className="text-gray-500 text-sm">No morning steps added yet.</p>
+              ) : (
+                routine.morning.map((step) => (
+                  <div key={step.id} className="flex items-center justify-between p-3 bg-white border rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">{getCategoryIcon(step.category)}</span>
+                      <span className="font-medium">{step.name}</span>
+                      <span className="text-xs text-gray-500 capitalize">{step.category}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleEditStep(step)}
+                        className="text-blue-500 hover:text-blue-700 p-1"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteStep(step.id, 'morning')}
+                        className="text-red-500 hover:text-red-700 p-1"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Evening Routine */}
+          <div>
+            <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+              🌙 Evening Routine
+            </h4>
+            <div className="space-y-2">
+              {routine.evening.length === 0 ? (
+                <p className="text-gray-500 text-sm">No evening steps added yet.</p>
+              ) : (
+                routine.evening.map((step) => (
+                  <div key={step.id} className="flex items-center justify-between p-3 bg-white border rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">{getCategoryIcon(step.category)}</span>
+                      <span className="font-medium">{step.name}</span>
+                      <span className="text-xs text-gray-500 capitalize">{step.category}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleEditStep(step)}
+                        className="text-blue-500 hover:text-blue-700 p-1"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteStep(step.id, 'evening')}
+                        className="text-red-500 hover:text-red-700 p-1"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Daily Tracking */}
+      <div className="space-y-6">
+        {skincare.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <Sparkles className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+            <p>No skincare steps for {format(new Date(selectedDate), 'MMMM d, yyyy')}</p>
+            <p className="text-sm mt-1">Customize your routine above to start tracking!</p>
+          </div>
+        ) : (
+          <>
+            {/* Morning Routine */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                🌅 Morning Routine
+              </h3>
+              <div className="space-y-3">
+                {skincare
+                  .filter(step => routine.morning.some(routineStep => routineStep.id === step.id))
+                  .map((step) => (
+                    <div key={step.id} className="card">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{getCategoryIcon(step.category)}</span>
+                          <div>
+                            <h4 className="font-semibold text-gray-800">{step.name}</h4>
+                            <p className="text-sm text-gray-500 capitalize">{step.category}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleToggleStep(step.id)}
+                          className={`p-2 rounded-full transition-colors ${
+                            step.completed
+                              ? 'bg-green-100 text-green-600 hover:bg-green-200'
+                              : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                          }`}
+                        >
+                          {step.completed ? '✓' : '○'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                {skincare.filter(step => routine.morning.some(routineStep => routineStep.id === step.id)).length === 0 && (
+                  <p className="text-gray-500 text-sm text-center py-4">No morning steps for today</p>
+                )}
+              </div>
+            </div>
+
+            {/* Evening Routine */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                🌙 Evening Routine
+              </h3>
+              <div className="space-y-3">
+                {skincare
+                  .filter(step => routine.evening.some(routineStep => routineStep.id === step.id))
+                  .map((step) => (
+                    <div key={step.id} className="card">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{getCategoryIcon(step.category)}</span>
+                          <div>
+                            <h4 className="font-semibold text-gray-800">{step.name}</h4>
+                            <p className="text-sm text-gray-500 capitalize">{step.category}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleToggleStep(step.id)}
+                          className={`p-2 rounded-full transition-colors ${
+                            step.completed
+                              ? 'bg-green-100 text-green-600 hover:bg-green-200'
+                              : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                          }`}
+                        >
+                          {step.completed ? '✓' : '○'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                {skincare.filter(step => routine.evening.some(routineStep => routineStep.id === step.id)).length === 0 && (
+                  <p className="text-gray-500 text-sm text-center py-4">No evening steps for today</p>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

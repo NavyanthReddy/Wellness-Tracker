@@ -1,147 +1,194 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit, Clock, Activity, Timer } from 'lucide-react';
+import { cloudStorage } from '../services/cloudStorage';
+import { useAuth } from '../contexts/AuthContext';
+import { format } from 'date-fns';
+import { Plus, Trash2, Dumbbell, CheckCircle, XCircle } from 'lucide-react';
 import { Workout } from '../types';
-import { getDailyData, addWorkout, deleteItem } from '../utils/storage';
 
 interface WorkoutTrackerProps {
-  date: string;
-  onUpdate: () => void;
+  selectedDate: string;
 }
 
-const WorkoutTracker: React.FC<WorkoutTrackerProps> = ({ date, onUpdate }) => {
+const WorkoutTracker: React.FC<WorkoutTrackerProps> = ({ selectedDate }) => {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
   const [formData, setFormData] = useState({
-    type: '',
-    duration: '',
-    intensity: 'medium' as Workout['intensity'],
-    description: '',
-    time: '',
+    completed: true,
+    workoutType: '',
+    weights: '',
+    reps: '',
+    intensity: 'medium' as const,
+    time: format(new Date(), 'HH:mm'),
   });
+  const { currentUser } = useAuth();
 
   useEffect(() => {
-    const dailyData = getDailyData(date);
-    setWorkouts(dailyData.workouts);
-  }, [date]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    const workout: Workout = {
-      id: editingWorkout?.id || Date.now().toString(),
-      type: formData.type,
-      duration: parseInt(formData.duration),
-      intensity: formData.intensity,
-      description: formData.description || undefined,
-      time: formData.time,
-      date,
+    const loadWorkouts = async () => {
+      if (!currentUser) return;
+      
+      try {
+        const dailyData = await cloudStorage.getDailyData(currentUser.uid, selectedDate);
+        setWorkouts(dailyData.workouts);
+      } catch (error) {
+        console.error('Error loading workouts:', error);
+      }
     };
 
-    addWorkout(date, workout);
-    resetForm();
-    onUpdate();
-  };
+    loadWorkouts();
+  }, [selectedDate, currentUser]);
 
-  const handleDelete = (workoutId: string) => {
-    deleteItem(date, 'workout', workoutId);
-    onUpdate();
-  };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.workoutType.trim() || !currentUser) return;
 
-  const handleEdit = (workout: Workout) => {
-    setEditingWorkout(workout);
-    setFormData({
-      type: workout.type,
-      duration: workout.duration.toString(),
-      intensity: workout.intensity,
-      description: workout.description || '',
-      time: workout.time,
-    });
-    setShowForm(true);
-  };
+    const newWorkout = {
+      id: Date.now().toString(),
+      completed: formData.completed,
+      workoutType: formData.workoutType.trim(),
+      weights: formData.weights ? parseFloat(formData.weights) : undefined,
+      reps: formData.reps ? parseInt(formData.reps) : undefined,
+      intensity: formData.intensity,
+      time: formData.time,
+    };
 
-  const resetForm = () => {
-    setFormData({
-      type: '',
-      duration: '',
-      intensity: 'medium',
-      description: '',
-      time: '',
-    });
-    setEditingWorkout(null);
-    setShowForm(false);
-  };
+    try {
+      await cloudStorage.addWorkout(currentUser.uid, selectedDate, {
+        completed: formData.completed,
+        workoutType: formData.workoutType.trim(),
+        weights: formData.weights ? parseFloat(formData.weights) : undefined,
+        reps: formData.reps ? parseInt(formData.reps) : undefined,
+        intensity: formData.intensity,
+        time: formData.time,
+      });
 
-  const getIntensityColor = (intensity: Workout['intensity']) => {
-    switch (intensity) {
-      case 'low': return 'text-green-600 bg-green-100';
-      case 'medium': return 'text-yellow-600 bg-yellow-100';
-      case 'high': return 'text-red-600 bg-red-100';
-      default: return 'text-gray-600 bg-gray-100';
+      // Update local state immediately
+      setWorkouts([...workouts, newWorkout]);
+
+      setFormData({
+        completed: true,
+        workoutType: '',
+        weights: '',
+        reps: '',
+        intensity: 'medium',
+        time: format(new Date(), 'HH:mm'),
+      });
+      setShowForm(false);
+    } catch (error) {
+      console.error('Error adding workout:', error);
     }
   };
 
-  const getWorkoutIcon = (type: string) => {
-    const lowerType = type.toLowerCase();
-    if (lowerType.includes('run') || lowerType.includes('cardio')) return '🏃‍♂️';
-    if (lowerType.includes('walk')) return '🚶‍♂️';
-    if (lowerType.includes('yoga')) return '🧘‍♀️';
-    if (lowerType.includes('gym') || lowerType.includes('weight')) return '🏋️‍♂️';
-    if (lowerType.includes('swim')) return '🏊‍♂️';
-    if (lowerType.includes('bike') || lowerType.includes('cycle')) return '🚴‍♂️';
-    if (lowerType.includes('dance')) return '💃';
-    return '💪';
+  const handleToggleComplete = async (workoutId: string) => {
+    if (!currentUser) return;
+    
+    const workout = workouts.find(w => w.id === workoutId);
+    if (workout) {
+      try {
+        await cloudStorage.updateWorkout(currentUser.uid, selectedDate, workoutId, { completed: !workout.completed });
+        // Update local state immediately
+        setWorkouts(workouts.map(w => 
+          w.id === workoutId ? { ...w, completed: !w.completed } : w
+        ));
+      } catch (error) {
+        console.error('Error updating workout:', error);
+      }
+    }
   };
 
-  const totalDuration = workouts.reduce((sum, workout) => sum + workout.duration, 0);
+  const handleDelete = async (workoutId: string) => {
+    if (!currentUser) return;
+    
+    try {
+      await cloudStorage.deleteItem(currentUser.uid, selectedDate, 'workout', workoutId);
+      // Update local state immediately
+      setWorkouts(workouts.filter(workout => workout.id !== workoutId));
+    } catch (error) {
+      console.error('Error deleting workout:', error);
+    }
+  };
+
+  const completedWorkouts = workouts.filter(w => w.completed).length;
+  const totalWorkouts = workouts.length;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Workout Tracker</h2>
-          <p className="text-gray-600">Track your daily exercise activities</p>
+        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+          <Dumbbell className="w-6 h-6 text-green-500" />
+          Workout Tracker
+        </h2>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="btn-primary flex items-center gap-2"
+        >
+          <Plus className="w-4 h-4" />
+          Add Workout
+        </button>
+      </div>
+
+      {/* Workout Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="wellness-card bg-green-50 border-green-200">
+          <div className="text-sm text-green-600 font-medium">Workouts Planned</div>
+          <div className="text-2xl font-bold text-green-700">{totalWorkouts}</div>
         </div>
-        <div className="flex items-center space-x-4">
-          <div className="text-right">
-            <p className="text-sm text-gray-600">Total Time</p>
-            <p className="text-2xl font-bold text-wellness-workouts">{totalDuration} min</p>
+        <div className="wellness-card bg-blue-50 border-blue-200">
+          <div className="text-sm text-blue-600 font-medium">Completed</div>
+          <div className="text-2xl font-bold text-blue-700">{completedWorkouts}</div>
+        </div>
+        <div className="wellness-card bg-purple-50 border-purple-200">
+          <div className="text-sm text-purple-600 font-medium">Completion Rate</div>
+          <div className="text-2xl font-bold text-purple-700">
+            {totalWorkouts > 0 ? Math.round((completedWorkouts / totalWorkouts) * 100) : 0}%
           </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="btn-primary flex items-center space-x-2"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Workout</span>
-          </button>
         </div>
       </div>
 
-      {/* Add/Edit Form */}
       {showForm && (
-        <div className="card animate-slide-up">
-          <h3 className="text-lg font-semibold mb-4">
-            {editingWorkout ? 'Edit Workout' : 'Add New Workout'}
-          </h3>
+        <div className="card">
+          <h3 className="text-lg font-semibold mb-4">Add New Workout</h3>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="completed"
+                  checked={formData.completed}
+                  onChange={() => setFormData({ ...formData, completed: true })}
+                  className="text-green-600"
+                />
+                <CheckCircle className="w-5 h-5 text-green-600" />
+                <span className="font-medium">Completed</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="completed"
+                  checked={!formData.completed}
+                  onChange={() => setFormData({ ...formData, completed: false })}
+                  className="text-red-600"
+                />
+                <XCircle className="w-5 h-5 text-red-600" />
+                <span className="font-medium">Skipped</span>
+              </label>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Workout Type
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Workout Type *
                 </label>
                 <input
                   type="text"
-                  value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  value={formData.workoutType}
+                  onChange={(e) => setFormData({ ...formData, workoutType: e.target.value })}
+                  placeholder="e.g., Chest Press, Squats, Cardio"
                   className="input-field"
-                  placeholder="e.g., Running, Yoga, Gym"
                   required
                 />
               </div>
-              
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Time
                 </label>
                 <input
@@ -149,62 +196,64 @@ const WorkoutTracker: React.FC<WorkoutTrackerProps> = ({ date, onUpdate }) => {
                   value={formData.time}
                   onChange={(e) => setFormData({ ...formData, time: e.target.value })}
                   className="input-field"
-                  required
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Duration (minutes)
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Weights (lbs)
                 </label>
                 <input
                   type="number"
-                  value={formData.duration}
-                  onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                  value={formData.weights}
+                  onChange={(e) => setFormData({ ...formData, weights: e.target.value })}
+                  placeholder="0"
                   className="input-field"
-                  placeholder="e.g., 30"
-                  min="1"
-                  required
+                  min="0"
+                  step="0.5"
                 />
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Intensity
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Reps
                 </label>
-                <select
-                  value={formData.intensity}
-                  onChange={(e) => setFormData({ ...formData, intensity: e.target.value as Workout['intensity'] })}
+                <input
+                  type="number"
+                  value={formData.reps}
+                  onChange={(e) => setFormData({ ...formData, reps: e.target.value })}
+                  placeholder="0"
                   className="input-field"
-                  required
-                >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
+                  min="0"
+                />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Description (optional)
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Intensity
               </label>
-              <textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              <select
+                value={formData.intensity}
+                onChange={(e) => setFormData({ ...formData, intensity: e.target.value as any })}
                 className="input-field"
-                rows={3}
-                placeholder="Additional details about your workout..."
-              />
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
             </div>
 
-            <div className="flex space-x-3">
+            <div className="flex gap-2">
               <button type="submit" className="btn-primary">
-                {editingWorkout ? 'Update Workout' : 'Add Workout'}
+                Add Workout
               </button>
-              <button type="button" onClick={resetForm} className="btn-secondary">
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="btn-secondary"
+              >
                 Cancel
               </button>
             </div>
@@ -212,62 +261,61 @@ const WorkoutTracker: React.FC<WorkoutTrackerProps> = ({ date, onUpdate }) => {
         </div>
       )}
 
-      {/* Workouts List */}
-      <div className="space-y-4">
+      <div className="space-y-3">
         {workouts.length === 0 ? (
-          <div className="card text-center py-12">
-            <Activity className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No workouts logged yet</h3>
-            <p className="text-gray-600 mb-4">Start tracking your fitness by adding your first workout</p>
-            <button
-              onClick={() => setShowForm(true)}
-              className="btn-primary"
-            >
-              Add Your First Workout
-            </button>
+          <div className="text-center py-8 text-gray-500">
+            <Dumbbell className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+            <p>No workouts logged yet for {format(new Date(selectedDate), 'MMMM d, yyyy')}</p>
           </div>
         ) : (
           workouts.map((workout) => (
-            <div key={workout.id} className="card hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="text-2xl">{getWorkoutIcon(workout.type)}</div>
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <h4 className="font-semibold text-gray-900">{workout.type}</h4>
-                      <span className="text-sm text-gray-500">•</span>
-                      <div className="flex items-center space-x-1 text-sm text-gray-500">
-                        <Clock className="w-3 h-3" />
-                        <span>{workout.time}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-4 mt-1">
-                      <div className="flex items-center space-x-1 text-sm text-gray-600">
-                        <Timer className="w-3 h-3" />
-                        <span>{workout.duration} min</span>
-                      </div>
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${getIntensityColor(workout.intensity)}`}
-                      >
-                        {workout.intensity} intensity
-                      </span>
-                    </div>
-                    {workout.description && (
-                      <p className="text-gray-600 text-sm mt-1">{workout.description}</p>
+            <div key={workout.id} className="card">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    {workout.completed ? (
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                    ) : (
+                      <XCircle className="w-5 h-5 text-red-600" />
                     )}
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      workout.completed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    }`}>
+                      {workout.completed ? 'Completed' : 'Not Completed'}
+                    </span>
+                    <span className="text-sm text-gray-500">{workout.time}</span>
+                  </div>
+                  <h4 className="font-semibold text-gray-800">{workout.workoutType}</h4>
+                  <div className="flex gap-4 mt-3 text-sm">
+                    {workout.weights && (
+                      <span className="text-blue-600">Weights: {workout.weights} lbs</span>
+                    )}
+                    {workout.reps && (
+                      <span className="text-green-600">Reps: {workout.reps}</span>
+                    )}
+                    <span className={`px-2 py-1 rounded text-xs ${
+                       workout.intensity === 'low' ? 'bg-green-100 text-green-700' :
+                       workout.intensity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                       'bg-red-100 text-red-700'
+                     }`}>
+                       {workout.intensity ? workout.intensity.charAt(0).toUpperCase() + workout.intensity.slice(1) : 'Medium'}
+                     </span>
                   </div>
                 </div>
-                
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={() => handleEdit(workout)}
-                    className="p-2 text-gray-500 hover:text-primary-600 transition-colors"
+                    onClick={() => handleToggleComplete(workout.id)}
+                    className={`px-3 py-2 rounded-lg font-medium text-sm transition-colors ${
+                      workout.completed
+                        ? 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-300'
+                        : 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
+                    }`}
                   >
-                    <Edit className="w-4 h-4" />
+                    {workout.completed ? '✓ Completed' : '○ Not Done'}
                   </button>
                   <button
                     onClick={() => handleDelete(workout.id)}
-                    className="p-2 text-gray-500 hover:text-red-600 transition-colors"
+                    className="text-red-500 hover:text-red-700 p-1"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
