@@ -52,14 +52,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    console.log('AuthContext: Setting up auth state listener...');
-    
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      console.log('AuthContext: Auth state changed:', user ? 'User logged in' : 'No user');
       setCurrentUser(user);
       setLoading(false);
     }, (error) => {
-      console.error('AuthContext: Auth state error:', error);
+      console.error('Auth state error:', error);
       setLoading(false);
     });
 

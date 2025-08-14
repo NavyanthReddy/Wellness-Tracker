@@ -4,49 +4,27 @@ import Dashboard from './components/Dashboard';
 import Login from './components/Login';
 import { initializeData } from './utils/storage';
 import ErrorBoundary from './components/ErrorBoundary';
-import DebugInfo from './components/DebugInfo';
 import './index.css';
 
 function AppContent() {
   // Get today's date in local timezone
   const getTodayString = () => {
     const now = new Date();
-    // Force UTC to avoid timezone issues
-    const utcYear = now.getUTCFullYear();
-    const utcMonth = String(now.getUTCMonth() + 1).padStart(2, '0');
-    const utcDay = String(now.getUTCDate()).padStart(2, '0');
-    
-    // Also get local time for comparison
-    const localYear = now.getFullYear();
-    const localMonth = String(now.getMonth() + 1).padStart(2, '0');
-    const localDay = String(now.getDate()).padStart(2, '0');
-    
-    console.log('UTC date:', `${utcYear}-${utcMonth}-${utcDay}`);
-    console.log('Local date:', `${localYear}-${localMonth}-${localDay}`);
-    
-    return `${localYear}-${localMonth}-${localDay}`;
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
   
   const [selectedDate, setSelectedDate] = useState(getTodayString());
   const { currentUser, loading } = useAuth();
-  
-  // Debug logging for initial date
-  console.log('App - Initial date:', getTodayString());
-  console.log('App - Current time:', new Date().toLocaleString());
-  console.log('App - Date object:', new Date());
-  console.log('App - getDate():', new Date().getDate());
-  console.log('App - getMonth():', new Date().getMonth());
-  console.log('App - getFullYear():', new Date().getFullYear());
 
   // Initialize data persistence on app startup
   useEffect(() => {
     initializeData();
   }, []);
 
-  console.log('AppContent: loading =', loading, 'currentUser =', currentUser);
-
   if (loading) {
-    console.log('AppContent: Showing loading screen');
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -58,13 +36,11 @@ function AppContent() {
   }
 
   if (!currentUser) {
-    console.log('AppContent: No user, showing Login');
     return <Login />;
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <DebugInfo />
       <Dashboard 
         selectedDate={selectedDate}
         onDateChange={setSelectedDate}
